@@ -3,6 +3,7 @@ package com.example.kotlingcspractice.Telemetry
 data class TelemetryState(
 
     val connected : Boolean = false,
+    val fcuDetected : Boolean = false,
     //Altitude
     val altitudeMsl: Float? = null,
     val altitudeRelative: Float? = null,

@@ -35,13 +35,14 @@ import kotlinx.coroutines.launch
 class MavlinkTelemetryRepository(
     private val host : String = "10.0.2.2",
     private val port : Int = 5762,
-    private val fcuSystemId : UByte = 1u,
-    private val fcuComponentId : UByte = 1u,
     private val gcsSystemId : UByte = 200u,
     private val gcsComponentId : UByte = 1u
 ){
     private val _state = MutableStateFlow(TelemetryState())
     val state : StateFlow<TelemetryState> = _state.asStateFlow()
+
+    private var fcuSystemId: UByte = 0u
+    private var fcuComponentId: UByte = 0u
 
     //Diagnostic info
     val lastFailure : StateFlow<Throwable> get() = _lastFailure.asStateFlow() as StateFlow<Throwable>
@@ -89,41 +90,55 @@ class MavlinkTelemetryRepository(
         }
 
         //Message Rates
-        scope.launch {
-            suspend fun setMessageRate(messageId: UInt,hz: Float){
-                val intervalUsec = if(hz <= 0f) 0f else (1_000_000f / hz)
-                    val cmd = CommandLong(
-                        targetSystem = fcuSystemId,
-                        targetComponent = fcuComponentId,
-                        command = MavCmd.SET_MESSAGE_INTERVAL.wrap(),
-                        confirmation = 0u,
-                        param1 = messageId.toFloat(),
-                        param2 = intervalUsec,
-                        param3 = 0f,
-                        param4 = 0f,
-                        param5 = 0f,
-                        param6 = 0f,
-                        param7 = 0f
-                    )
-                    connection.trySendUnsignedV2(gcsSystemId,gcsComponentId,cmd)
-            }
-            //Set rates here
-            setMessageRate(1u,1f) // SYS_STATUS
-            setMessageRate(24u,1f) // GPS_RAW_INT
-            setMessageRate(33u,5f) // GLOBAL_POSITION_INT
-            setMessageRate(74u,5f) // VFR_HUD
-            setMessageRate(147u,1f) // BATTERY_STATUS
-        }
         // Collecting the messages from the FCU
 
         val frames = connection.mavFrame
-            .filter { it.systemId == fcuSystemId && it.componentId == fcuComponentId }
             .map { it.message }
             .shareIn(scope, SharingStarted.Eagerly, replay = 0)
 
+        scope.launch {
+            frames
+                .filterIsInstance<Heartbeat>()
+                .filter { it.type != MavType.GCS }
+                .collect{
+                    if(!state.value.fcuDetected){
+                        fcuSystemId = it.systemId
+                        fcuComponentId = it.componentId
+                        _state.update { it.copy(fcuDetected = true) }
+
+                        launch {
+                            suspend fun setMessageRate(messageId: UInt,hz: Float){
+                                val intervalUsec = if(hz <= 0f) 0f else (1_000_000f / hz)
+                                val cmd = CommandLong(
+                                    targetSystem = fcuSystemId,
+                                    targetComponent = fcuComponentId,
+                                    command = MavCmd.SET_MESSAGE_INTERVAL.wrap(),
+                                    confirmation = 0u,
+                                    param1 = messageId.toFloat(),
+                                    param2 = intervalUsec,
+                                    param3 = 0f,
+                                    param4 = 0f,
+                                    param5 = 0f,
+                                    param6 = 0f,
+                                    param7 = 0f
+                                )
+                                connection.trySendUnsignedV2(gcsSystemId,gcsComponentId,cmd)
+                            }
+                            //Set rates here
+                            setMessageRate(1u,1f) // SYS_STATUS
+                            setMessageRate(24u,1f) // GPS_RAW_INT
+                            setMessageRate(33u,5f) // GLOBAL_POSITION_INT
+                            setMessageRate(74u,5f) // VFR_HUD
+                            setMessageRate(147u,1f) // BATTERY_STATUS
+                        }
+                    }
+                }
+        }
         //VFR_HUD for alt and speed
         scope.launch {
-            frames.filterIsInstance<VfrHud>()
+            frames
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filterIsInstance<VfrHud>()
                 .collect { hud->
                     _state.update{
                         it.copy(
@@ -137,7 +152,9 @@ class MavlinkTelemetryRepository(
 
         // GLOBAL_POSITION_INT for relative alt
         scope.launch {
-            frames.filterIsInstance<GlobalPositionInt>()
+            frames
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filterIsInstance<GlobalPositionInt>()
                 .collect{ gp->
                     val altAMSLm = gp.alt / 1000f
                     val relAltM = gp.relativeAlt / 1000f
@@ -147,7 +164,9 @@ class MavlinkTelemetryRepository(
 
         // BATTERY_STATUS for battery info
         scope.launch{
-            frames.filterIsInstance<BatteryStatus>()
+            frames
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filterIsInstance<BatteryStatus>()
                 .collect { b ->
                     val currentA =
                         if (b.currentBattery.toInt() == -1) null else b.currentBattery / 100f
@@ -159,7 +178,9 @@ class MavlinkTelemetryRepository(
 
         // SYS_STATUS for voltage and battery percent
         scope.launch{
-            frames.filterIsInstance<SysStatus>()
+            frames
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filterIsInstance<SysStatus>()
                 .collect { s ->
                     val vBatt =
                         if (s.voltageBattery.toUInt() == 0xFFFFu) null else s.voltageBattery.toFloat() / 1000f
@@ -172,7 +193,9 @@ class MavlinkTelemetryRepository(
 
         // GPS_RAW_INT for HDOP and Sat count
         scope.launch{
-            frames.filterIsInstance<GpsRawInt>()
+            frames
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filterIsInstance<GpsRawInt>()
                 .collect { gps ->
                     val sats = gps.satellitesVisible.toInt().takeIf { it >= 0 }
                     val hdop =
