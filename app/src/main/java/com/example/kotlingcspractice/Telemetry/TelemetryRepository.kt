@@ -17,6 +17,7 @@ import com.divpundir.mavlink.definitions.common.VfrHud
 import com.divpundir.mavlink.definitions.minimal.Heartbeat
 import com.divpundir.mavlink.definitions.minimal.MavAutopilot
 import com.divpundir.mavlink.definitions.minimal.MavModeFlag
+import android.util.Log
 import com.divpundir.mavlink.definitions.minimal.MavType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -54,27 +55,45 @@ class MavlinkTelemetryRepository(
 
     fun start(scope: CoroutineScope){
 
-        //Initial Launch Scope
-        scope.launch {
-            while(isActive && !connection.tryConnect(this)){
-                _state.update { it.copy(connected = false) }
+
+        suspend fun reconnect(scope: CoroutineScope) {
+            while (scope.isActive) {
+                try {
+                    if (connection.tryConnect(scope)) {
+                        return // Exit on successful connection
+                    }
+                } catch (e: Exception) {
+                    Log.e("MavlinkTelemetryRepository", "Connection attempt failed", e)
+                    _lastFailure.value = e
+                }
                 delay(1000)
             }
         }
 
-        //Keep connected flag in sync
+        //Keep connected flag in sync and manage reconnects
         scope.launch{
+            reconnect(this) // Initial connection attempt
             connection.streamState.collect {
-                st->
+                    st->
                 when(st){
-                    is StreamState.Active -> _state.update { it.copy(connected = true) }
-                    is StreamState.Inactive -> _state.update { it.copy(connected = false) }
+                    is StreamState.Active -> {
+                        if (!state.value.connected) {
+                            Log.i("MavlinkTelemetryRepository", "Connection Active")
+                            _state.update { it.copy(connected = true) }
+                        }
+                    }
+                    is StreamState.Inactive -> {
+                        if (state.value.connected) {
+                            Log.i("MavlinkTelemetryRepository", "Connection Inactive, attempting to reconnect...")
+                            _state.update { it.copy(connected = false, fcuDetected = false) }
+                            reconnect(this)
+                        }
+                    }
                 }
             }
         }
 
-        //Auto reconnect on failure
-
+        // GCS Heartbeat
         scope.launch{
             val heartbeat = Heartbeat(
                 type = MavType.GCS.wrap(),
@@ -84,7 +103,15 @@ class MavlinkTelemetryRepository(
                 mavlinkVersion = 3u
             )
             while(isActive){
-                connection.trySendUnsignedV2(gcsSystemId,gcsComponentId,heartbeat)
+                if (state.value.connected) {
+                    try {
+                        connection.trySendUnsignedV2(gcsSystemId, gcsComponentId, heartbeat)
+                    } catch (e: Exception) {
+                        Log.e("MavlinkTelemetryRepository", "Failed to send heartbeat", e)
+                        _lastFailure.value = e
+                        // This might indicate the connection is dead, the streamState collector will handle it
+                    }
+                }
                 delay(1000)
             }
         }
@@ -96,12 +123,19 @@ class MavlinkTelemetryRepository(
             .shareIn(scope, SharingStarted.Eagerly, replay = 0)
 
         scope.launch {
+            mavFrameStream.collect {
+                Log.d("MavlinkTelemetryRepository", "Raw Frame: ${it.message.javaClass.simpleName} (sysId: ${it.systemId}, compId: ${it.componentId})")
+            }
+        }
+
+        scope.launch {
             mavFrameStream
                 .filter { it.message is Heartbeat && (it.message as Heartbeat).type != MavType.GCS }
                 .collect{
                     if(!state.value.fcuDetected){
                         fcuSystemId = it.systemId
                         fcuComponentId = it.componentId
+                        Log.i("MavlinkTelemetryRepository", "FCU detected with sysId: $fcuSystemId, compId: $fcuComponentId")
                         _state.update { it.copy(fcuDetected = true) }
 
                         launch {
@@ -120,7 +154,12 @@ class MavlinkTelemetryRepository(
                                     param6 = 0f,
                                     param7 = 0f
                                 )
-                                connection.trySendUnsignedV2(gcsSystemId,gcsComponentId,cmd)
+                                try {
+                                    connection.trySendUnsignedV2(gcsSystemId, gcsComponentId, cmd)
+                                } catch (e: Exception) {
+                                    Log.e("MavlinkTelemetryRepository", "Failed to send SET_MESSAGE_INTERVAL", e)
+                                    _lastFailure.value = e
+                                }
                             }
                             //Set rates here
                             setMessageRate(1u,1f) // SYS_STATUS
@@ -135,10 +174,11 @@ class MavlinkTelemetryRepository(
         //VFR_HUD for alt and speed
         scope.launch {
             mavFrameStream
-                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId }
                 .map { it.message }
                 .filterIsInstance<VfrHud>()
                 .collect { hud->
+                    Log.d("MavlinkTelemetryRepository", "Received VFR_HUD: $hud")
                     _state.update{
                         it.copy(
                             altitudeMsl = hud.alt,
@@ -152,10 +192,11 @@ class MavlinkTelemetryRepository(
         // GLOBAL_POSITION_INT for relative alt
         scope.launch {
             mavFrameStream
-                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId }
                 .map { it.message }
                 .filterIsInstance<GlobalPositionInt>()
                 .collect{ gp->
+                    Log.d("MavlinkTelemetryRepository", "Received GLOBAL_POSITION_INT: $gp")
                     val altAMSLm = gp.alt / 1000f
                     val relAltM = gp.relativeAlt / 1000f
                     _state.update{ it.copy(altitudeMsl = altAMSLm , altitudeRelative = relAltM) }
@@ -165,10 +206,11 @@ class MavlinkTelemetryRepository(
         // BATTERY_STATUS for battery info
         scope.launch{
             mavFrameStream
-                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId }
                 .map { it.message }
                 .filterIsInstance<BatteryStatus>()
                 .collect { b ->
+                    Log.d("MavlinkTelemetryRepository", "Received BATTERY_STATUS: $b")
                     val currentA =
                         if (b.currentBattery.toInt() == -1) null else b.currentBattery / 100f
                     _state.update{
@@ -180,10 +222,11 @@ class MavlinkTelemetryRepository(
         // SYS_STATUS for voltage and battery percent
         scope.launch{
             mavFrameStream
-                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId }
                 .map { it.message }
                 .filterIsInstance<SysStatus>()
                 .collect { s ->
+                    Log.d("MavlinkTelemetryRepository", "Received SYS_STATUS: $s")
                     val vBatt =
                         if (s.voltageBattery.toUInt() == 0xFFFFu) null else s.voltageBattery.toFloat() / 1000f
                     val pct =
@@ -196,10 +239,11 @@ class MavlinkTelemetryRepository(
         // GPS_RAW_INT for HDOP and Sat count
         scope.launch{
             mavFrameStream
-                .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .filter { state.value.fcuDetected && it.systemId == fcuSystemId }
                 .map { it.message }
                 .filterIsInstance<GpsRawInt>()
                 .collect { gps ->
+                    Log.d("MavlinkTelemetryRepository", "Received GPS_RAW_INT: $gps")
                     val sats = gps.satellitesVisible.toInt().takeIf { it >= 0 }
                     val hdop =
                         if (gps.eph.toUInt() == 0xFFFFu) null else gps.eph.toFloat() / 100f
