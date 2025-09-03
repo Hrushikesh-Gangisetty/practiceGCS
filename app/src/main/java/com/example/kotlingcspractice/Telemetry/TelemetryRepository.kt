@@ -92,14 +92,12 @@ class MavlinkTelemetryRepository(
         //Message Rates
         // Collecting the messages from the FCU
 
-        val frames = connection.mavFrame
-            .map { it.message }
+        val mavFrameStream = connection.mavFrame
             .shareIn(scope, SharingStarted.Eagerly, replay = 0)
 
         scope.launch {
-            frames
-                .filterIsInstance<Heartbeat>()
-                .filter { it.type != MavType.GCS }
+            mavFrameStream
+                .filter { it.message is Heartbeat && (it.message as Heartbeat).type != MavType.GCS }
                 .collect{
                     if(!state.value.fcuDetected){
                         fcuSystemId = it.systemId
@@ -136,8 +134,9 @@ class MavlinkTelemetryRepository(
         }
         //VFR_HUD for alt and speed
         scope.launch {
-            frames
+            mavFrameStream
                 .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .map { it.message }
                 .filterIsInstance<VfrHud>()
                 .collect { hud->
                     _state.update{
@@ -152,8 +151,9 @@ class MavlinkTelemetryRepository(
 
         // GLOBAL_POSITION_INT for relative alt
         scope.launch {
-            frames
+            mavFrameStream
                 .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .map { it.message }
                 .filterIsInstance<GlobalPositionInt>()
                 .collect{ gp->
                     val altAMSLm = gp.alt / 1000f
@@ -164,8 +164,9 @@ class MavlinkTelemetryRepository(
 
         // BATTERY_STATUS for battery info
         scope.launch{
-            frames
+            mavFrameStream
                 .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .map { it.message }
                 .filterIsInstance<BatteryStatus>()
                 .collect { b ->
                     val currentA =
@@ -178,8 +179,9 @@ class MavlinkTelemetryRepository(
 
         // SYS_STATUS for voltage and battery percent
         scope.launch{
-            frames
+            mavFrameStream
                 .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .map { it.message }
                 .filterIsInstance<SysStatus>()
                 .collect { s ->
                     val vBatt =
@@ -193,8 +195,9 @@ class MavlinkTelemetryRepository(
 
         // GPS_RAW_INT for HDOP and Sat count
         scope.launch{
-            frames
+            mavFrameStream
                 .filter { state.value.fcuDetected && it.systemId == fcuSystemId && it.componentId == fcuComponentId }
+                .map { it.message }
                 .filterIsInstance<GpsRawInt>()
                 .collect { gps ->
                     val sats = gps.satellitesVisible.toInt().takeIf { it >= 0 }
