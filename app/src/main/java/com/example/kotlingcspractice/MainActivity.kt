@@ -4,30 +4,46 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.kotlingcspractice.Design.TelemetryOverlay
 import com.example.kotlingcspractice.Telemetry.TelemetryViewModel
-import com.example.kotlingcspractice.ui.theme.KotlinGCSPracticeTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            val vm : TelemetryViewModel = TelemetryViewModel()
+            val vm = remember { TelemetryViewModel() }
             val state = vm.telemetry.collectAsStateWithLifecycle()
-            TelemetryOverlay(
-                state = state.value,
-                modifier = Modifier
-                    .fillMaxWidth()
-            )
+            val snackbarHostState = remember { SnackbarHostState() }
+            val scope = rememberCoroutineScope()
+
+            LaunchedEffect(state.value.connected) {
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        if (state.value.connected) "Connected" else "Disconnected"
+                    )
+                }
+            }
+
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbarHostState) }
+            ) { padding ->
+                TelemetryOverlay(
+                    state = state.value,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                )
+            }
         }
     }
 }
