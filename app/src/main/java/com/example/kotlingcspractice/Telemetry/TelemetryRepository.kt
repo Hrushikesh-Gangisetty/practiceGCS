@@ -130,7 +130,7 @@ class MavlinkTelemetryRepository(
 
         scope.launch {
             mavFrameStream
-                .filter { it.message is Heartbeat && (it.message as Heartbeat).type != MavType.GCS }
+                .filter { it.message is Heartbeat && (it.message as Heartbeat).type != MavType.GCS.wrap() }
                 .collect{
                     if(!state.value.fcuDetected){
                         fcuSystemId = it.systemId
@@ -199,7 +199,12 @@ class MavlinkTelemetryRepository(
                     Log.d("MavlinkTelemetryRepository", "Received GLOBAL_POSITION_INT: $gp")
                     val altAMSLm = gp.alt / 1000f
                     val relAltM = gp.relativeAlt / 1000f
-                    _state.update{ it.copy(altitudeMsl = altAMSLm , altitudeRelative = relAltM) }
+                    val lat = gp.lat.takeIf { it != Int.MIN_VALUE }?.let { it / 10_000_000.0 }
+                    val lon = gp.lon.takeIf { it != Int.MIN_VALUE }?.let { it/10_000_000.0 }
+                    if(lat != state.value.latitude || lon != state.value.longitude){
+                        Log.i("MavlinkTelemetryRepository", "Position update: lat=$lat, lon=$lon")
+                    }
+                    _state.update{ it.copy(altitudeMsl = altAMSLm , altitudeRelative = relAltM , latitude = lat, longitude = lon)}
                 }
         }
 
@@ -231,8 +236,7 @@ class MavlinkTelemetryRepository(
                         if (s.voltageBattery.toUInt() == 0xFFFFu) null else s.voltageBattery.toFloat() / 1000f
                     val pct =
                         if (s.batteryRemaining.toInt() == -1) null else s.batteryRemaining.toInt()
-                    _state.update{it.copy(volatage = vBatt , batteryPercent = pct) }
-
+                    _state.update{it.copy(voltage = vBatt , batteryPercent = pct) }
                 }
         }
 

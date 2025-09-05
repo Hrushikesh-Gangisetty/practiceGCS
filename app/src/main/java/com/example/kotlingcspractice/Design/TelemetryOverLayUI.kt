@@ -36,11 +36,14 @@ fun TelemetryOverlay(
             TelemetryRow("Altitude (Rel)", state.altitudeRelative?.let { "${fmt(it)} m" } ?: "—")
             TelemetryRow("Airspeed", state.airspeed?.let { "${fmt(it)} m/s" } ?: "—")
             TelemetryRow("Groundspeed", state.groundspeed?.let { "${fmt(it)} m/s" } ?: "—")
-            TelemetryRow("Voltage", state.volatage?.let { "${fmt(it)} V" } ?: "—")
+            TelemetryRow("Voltage", state.voltage?.let { "${fmt(it)} V" } ?: "—")
             TelemetryRow("Battery", state.batteryPercent?.let { "$it%" } ?: "—")
             TelemetryRow("Current", state.currentA?.let { "${fmt(it)} A" } ?: "—")
             TelemetryRow("Satellites", state.sats?.toString() ?: "—")
             TelemetryRow("HDOP", state.hdop?.let { fmt(it) } ?: "—")
+            TelemetryRow("Latitude", state.latitude?.let { fmt(it.toFloat(), 6) } ?: "—")
+            TelemetryRow("Longitude", state.longitude?.let { fmt(it.toFloat(), 6) } ?: "—" )
+
         }
     }
 }
