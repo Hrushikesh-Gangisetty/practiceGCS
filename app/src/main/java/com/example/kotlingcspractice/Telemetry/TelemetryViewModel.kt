@@ -8,9 +8,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 
-class TelemetryViewModel(
-    private val repo: MavlinkTelemetryRepository = MavlinkTelemetryRepository()
-) : ViewModel() {
+class TelemetryViewModel : ViewModel() {
+
+    private val repo = MavlinkTelemetryRepository
 
     // Expose as a StateFlow for Compose to observe
     val telemetry: StateFlow<TelemetryState> = repo.state

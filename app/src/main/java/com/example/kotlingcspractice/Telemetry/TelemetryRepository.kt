@@ -9,18 +9,17 @@ import com.divpundir.mavlink.connection.StreamState
 import com.divpundir.mavlink.connection.tcp.TcpClientMavConnection
 import com.divpundir.mavlink.definitions.common.*
 import com.divpundir.mavlink.definitions.minimal.*
-//import com.example.kotlingcspractice.core.AppScope
+import com.example.kotlingcspractice.Telemetry.AppScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-class MavlinkTelemetryRepository(
-    private val host: String = "10.0.2.2",
-    private val port: Int = 5762,
-    private val gcsSystemId: UByte = 200u,
+object MavlinkTelemetryRepository {
+    private const val host: String = "10.0.2.2"
+    private const val port: Int = 5762
+    private val gcsSystemId: UByte = 200u
     private val gcsComponentId: UByte = 1u
-) {
     private val _state = MutableStateFlow(TelemetryState())
     val state: StateFlow<TelemetryState> = _state.asStateFlow()
 
