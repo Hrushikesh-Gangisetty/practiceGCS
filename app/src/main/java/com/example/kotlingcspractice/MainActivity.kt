@@ -3,19 +3,18 @@ package com.example.kotlingcspractice
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Scaffold
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.kotlingcspractice.Design.TelemetryOverlay
-import com.example.kotlingcspractice.Telemetry.TelemetryViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.kotlingcspractice.telemetry.TelemetryViewModel
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -37,7 +36,7 @@ class MainActivity : ComponentActivity() {
 
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbarHostState) }
-            ) { padding ->
+            ) { _ ->
                 TelemetryOverlay(
                     state = state.value,
                     modifier = Modifier
