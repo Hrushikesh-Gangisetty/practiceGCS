@@ -1,14 +1,23 @@
-package com.example.kotlingcspractice.Telemetry
+package com.example.kotlingcspractice.telemetry
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.kotlingcspractice.Telemetry.MavlinkTelemetryRepository
+import com.example.kotlingcspractice.Telemetry.TelemetryState
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 
 class TelemetryViewModel(
     private val repo: MavlinkTelemetryRepository = MavlinkTelemetryRepository()
-) : ViewModel(){
-    val telemetry : StateFlow<TelemetryState> get() = repo.state
+) : ViewModel() {
+
+    // Expose as a StateFlow for Compose to observe
+    val telemetry: StateFlow<TelemetryState> = repo.state
+
+
     init {
-        repo.start(viewModelScope)
+        // Start the MAVLink telemetry collection
+        repo.start()
     }
 }
