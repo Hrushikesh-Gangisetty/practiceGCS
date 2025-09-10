@@ -20,4 +20,34 @@ class TelemetryViewModel : ViewModel() {
         // Start the MAVLink telemetry collection
         repo.start()
     }
+
+    fun arm() {
+        viewModelScope.launch {
+            repo.arm()
+        }
+    }
+
+    fun disarm() {
+        viewModelScope.launch {
+            repo.disarm()
+        }
+    }
+
+    fun changeMode() {
+        viewModelScope.launch {
+            repo.changeMode(com.divpundir.mavlink.definitions.common.MavMode.ARDUPILOT_AUTO)
+        }
+    }
+
+    fun takeoff() {
+        viewModelScope.launch {
+            repo.takeoff(10f)
+        }
+    }
+
+    fun land() {
+        viewModelScope.launch {
+            repo.land()
+        }
+    }
 }

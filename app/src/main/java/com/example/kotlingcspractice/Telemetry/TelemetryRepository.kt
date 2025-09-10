@@ -204,16 +204,62 @@ object MavlinkTelemetryRepository {
                 }
         }
 
+        // HEARTBEAT
+        scope.launch {
+            mavFrameStream
+                .filter { frame -> state.value.fcuDetected && frame.systemId == fcuSystemId }
+                .map { frame -> frame.message }
+                .filterIsInstance<Heartbeat>()
+                .collect { hb ->
+                    val armed = hb.baseMode.any { flag -> flag == MavModeFlag.SAFETY_ARMED }
+
+                    // ArduPilot custom modes
+                    val mode = when (hb.customMode) {
+                        0u -> "Stabilize"
+                        1u -> "Acro"
+                        2u -> "Alt Hold"
+                        3u -> "Auto"
+                        4u -> "Guided"
+                        5u -> "Loiter"
+                        6u -> "RTL"
+                        7u -> "Circle"
+                        9u -> "Land"
+                        11u -> "Drift"
+                        13u -> "Sport"
+                        14u -> "Flip"
+                        15u -> "AutoTune"
+                        16u -> "Pos Hold"
+                        17u -> "Brake"
+                        18u -> "Throw"
+                        19u -> "Avoid_ADSB"
+                        20u -> "Guided_NoGPS"
+                        21u -> "Smart_RTL"
+                        22u -> "FlowHold"
+                        23u -> "Follow"
+                        24u -> "ZigZag"
+                        25u -> "SystemID"
+                        26u -> "AutoRotate"
+                        27u -> "Auto_RTL"
+                        else -> "Unknown"
+                    }
+                    _state.update { telemetryState -> telemetryState.copy(armed = armed, mode = mode) }
+                }
+        }
+
+
         // SYS_STATUS
         scope.launch {
             mavFrameStream
-                .filter { state.value.fcuDetected && it.systemId == fcuSystemId }
-                .map { it.message }
+                .filter { frame -> state.value.fcuDetected && frame.systemId == fcuSystemId }
+                .map { frame -> frame.message }
                 .filterIsInstance<SysStatus>()
                 .collect { s ->
                     val vBatt = if (s.voltageBattery.toUInt() == 0xFFFFu) null else s.voltageBattery.toFloat() / 1000f
                     val pct = if (s.batteryRemaining.toInt() == -1) null else s.batteryRemaining.toInt()
-                    _state.update { it.copy(voltage = vBatt, batteryPercent = pct) }
+                    val armable = s.onboardControlSensorsPresent.any { sensor -> sensor == MavSysStatus.SENSOR_3D_GYRO } &&
+                            s.onboardControlSensorsEnabled.any { sensor -> sensor == MavSysStatus.SENSOR_3D_GYRO } &&
+                            s.onboardControlSensorsHealth.any { sensor -> sensor == MavSysStatus.SENSOR_3D_GYRO }
+                    _state.update { telemetryState -> telemetryState.copy(voltage = vBatt, batteryPercent = pct, armable = armable) }
                 }
         }
 
@@ -229,5 +275,51 @@ object MavlinkTelemetryRepository {
                     _state.update { it.copy(sats = sats, hdop = hdop) }
                 }
         }
+    }
+
+    private suspend fun sendCommand(command: MavCmd, param1: Float = 0f, param2: Float = 0f, param3: Float = 0f, param4: Float = 0f, param5: Float = 0f, param6: Float = 0f, param7: Float = 0f) {
+        val commandLong = CommandLong(
+            targetSystem = fcuSystemId,
+            targetComponent = fcuComponentId,
+            command = command.wrap(),
+            confirmation = 0u,
+            param1 = param1,
+            param2 = param2,
+            param3 = param3,
+            param4 = param4,
+            param5 = param5,
+            param6 = param6,
+            param7 = param7
+        )
+        try {
+            connection.trySendUnsignedV2(gcsSystemId, gcsComponentId, commandLong)
+        } catch (e: Exception) {
+            Log.e("MavlinkRepo", "Failed to send command", e)
+            _lastFailure.value = e
+        }
+    }
+
+    suspend fun arm() {
+        if (state.value.armable) {
+            sendCommand(MavCmd.COMPONENT_ARM_DISARM, 1f)
+        } else {
+            Log.w("MavlinkRepo", "Arm command rejected, vehicle not armable")
+        }
+    }
+
+    suspend fun disarm() {
+        sendCommand(MavCmd.COMPONENT_ARM_DISARM, 0f)
+    }
+
+    suspend fun changeMode(mode: MavMode) {
+        sendCommand(MavCmd.DO_SET_MODE, mode.value.toFloat(), 0f)
+    }
+
+    suspend fun takeoff(altitude: Float) {
+        sendCommand(MavCmd.NAV_TAKEOFF, -1f, 0f, 0f, 0f, 0f, 0f, altitude)
+    }
+
+    suspend fun land() {
+        sendCommand(MavCmd.NAV_LAND)
     }
 }
