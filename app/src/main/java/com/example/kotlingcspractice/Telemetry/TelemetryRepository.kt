@@ -207,21 +207,11 @@ object MavlinkTelemetryRepository {
         // HEARTBEAT
         scope.launch {
             mavFrameStream
-
                 .filter { frame -> state.value.fcuDetected && frame.systemId == fcuSystemId }
                 .map { frame -> frame.message }
                 .filterIsInstance<Heartbeat>()
                 .collect { hb ->
-                    val armed = hb.baseMode.any { flag -> flag == MavModeFlag.SAFETY_ARMED }
-
-                .filter { state.value.fcuDetected && it.systemId == fcuSystemId }
-                .map { it.message }
-                .filterIsInstance<Heartbeat>()
-                .collect { hb ->
-                    val armed = hb.baseMode.any { it == MavModeFlag.SAFETY_ARMED }
-
-
-                    // ArduPilot custom modes
+                    val armed = (hb.baseMode.value and MavModeFlag.SAFETY_ARMED.value) != 0u
                     val mode = when (hb.customMode) {
                         0u -> "Stabilize"
                         1u -> "Acro"
@@ -250,14 +240,9 @@ object MavlinkTelemetryRepository {
                         27u -> "Auto_RTL"
                         else -> "Unknown"
                     }
-
-                    _state.update { telemetryState -> telemetryState.copy(armed = armed, mode = mode) }
-
                     _state.update { it.copy(armed = armed, mode = mode) }
-
                 }
         }
-
 
         // SYS_STATUS
         scope.launch {
@@ -268,17 +253,12 @@ object MavlinkTelemetryRepository {
                 .collect { s ->
                     val vBatt = if (s.voltageBattery.toUInt() == 0xFFFFu) null else s.voltageBattery.toFloat() / 1000f
                     val pct = if (s.batteryRemaining.toInt() == -1) null else s.batteryRemaining.toInt()
-
-                    val armable = s.onboardControlSensorsPresent.any { sensor -> sensor == MavSysStatus.SENSOR_3D_GYRO } &&
-                            s.onboardControlSensorsEnabled.any { sensor -> sensor == MavSysStatus.SENSOR_3D_GYRO } &&
-                            s.onboardControlSensorsHealth.any { sensor -> sensor == MavSysStatus.SENSOR_3D_GYRO }
-                    _state.update { telemetryState -> telemetryState.copy(voltage = vBatt, batteryPercent = pct, armable = armable) }
-
-                    val armable = s.onboardControlSensorsPresent.any { it == MavSysStatus.SENSOR_3D_GYRO } &&
-                            s.onboardControlSensorsEnabled.any { it == MavSysStatus.SENSOR_3D_GYRO } &&
-                            s.onboardControlSensorsHealth.any { it == MavSysStatus.SENSOR_3D_GYRO }
+                    val SENSOR_3D_GYRO = 1u
+                    val present = (s.onboardControlSensorsPresent.value and SENSOR_3D_GYRO) != 0u
+                    val enabled = (s.onboardControlSensorsEnabled.value and SENSOR_3D_GYRO) != 0u
+                    val healthy = (s.onboardControlSensorsHealth.value and SENSOR_3D_GYRO) != 0u
+                    val armable = present && enabled && healthy
                     _state.update { it.copy(voltage = vBatt, batteryPercent = pct, armable = armable) }
-
                 }
         }
 
@@ -296,7 +276,8 @@ object MavlinkTelemetryRepository {
         }
     }
 
-    private suspend fun sendCommand(command: MavCmd, param1: Float = 0f, param2: Float = 0f, param3: Float = 0f, param4: Float = 0f, param5: Float = 0f, param6: Float = 0f, param7: Float = 0f) {
+    // Remove private modifier from sendCommand and ensure it's a member function
+    suspend fun sendCommand(command: MavCmd, param1: Float = 0f, param2: Float = 0f, param3: Float = 0f, param4: Float = 0f, param5: Float = 0f, param6: Float = 0f, param7: Float = 0f) {
         val commandLong = CommandLong(
             targetSystem = fcuSystemId,
             targetComponent = fcuComponentId,
