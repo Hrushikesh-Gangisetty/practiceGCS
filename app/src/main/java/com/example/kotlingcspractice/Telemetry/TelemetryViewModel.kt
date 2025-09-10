@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.kotlingcspractice.Telemetry.MavlinkTelemetryRepository
 import com.example.kotlingcspractice.Telemetry.TelemetryState
+import com.example.kotlingcspractice.Telemetry.MavMode
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 class TelemetryViewModel : ViewModel() {
 
@@ -35,7 +37,7 @@ class TelemetryViewModel : ViewModel() {
 
     fun changeMode() {
         viewModelScope.launch {
-            repo.changeMode(com.divpundir.mavlink.definitions.common.MavMode.ARDUPILOT_AUTO)
+            repo.changeMode(MavMode(3u)) // 3u corresponds to "Auto" mode
         }
     }
 
