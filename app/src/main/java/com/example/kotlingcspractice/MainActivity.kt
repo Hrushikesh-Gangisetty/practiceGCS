@@ -40,7 +40,53 @@ class MainActivity : ComponentActivity() {
                 TelemetryOverlay(
                     state = state.value,
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxWidth(),
+                    onArmClick = {
+                        if (state.value.armable) {
+                            vm.arm()
+                        } else {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Drone is not armable")
+                            }
+                        }
+                    },
+                    onDisarmClick = {
+                        if (state.value.altitudeRelative != null && state.value.altitudeRelative!! < 0.5f) {
+                            vm.disarm()
+                        } else {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Drone must be landed to disarm")
+                            }
+                        }
+                    },
+                    onChangeModeClick = { vm.changeMode() },
+                    onTakeoffClick = {
+                        if (state.value.armed) {
+                            vm.takeoff()
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Taking off to 10m...")
+                                val startTime = System.currentTimeMillis()
+                                var timeout = false
+                                while (state.value.altitudeRelative == null || state.value.altitudeRelative!! < 9.5f) {
+                                    kotlinx.coroutines.delay(100)
+                                    if (System.currentTimeMillis() - startTime > 20000) { // 20 second timeout
+                                        timeout = true
+                                        break
+                                    }
+                                }
+                                if (timeout) {
+                                    snackbarHostState.showSnackbar("Takeoff timed out")
+                                } else {
+                                    vm.land()
+                                    snackbarHostState.showSnackbar("Landing...")
+                                }
+                            }
+                        } else {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Drone is not armed")
+                            }
+                        }
+                    }
                 )
             }
         }
