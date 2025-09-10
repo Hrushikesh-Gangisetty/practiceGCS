@@ -44,6 +44,64 @@ fun TelemetryOverlay(
             TelemetryRow("Latitude", state.latitude?.let { fmt(it.toFloat(), 6) } ?: "—")
             TelemetryRow("Longitude", state.longitude?.let { fmt(it.toFloat(), 6) } ?: "—" )
 
+            // Control Buttons
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                "Controls",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            // First row of buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { onChangeModeClick() },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Change Mode")
+                }
+
+                Button(
+                    onClick = { onArmClick() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    )
+                ) {
+                    Text("Arm")
+                }
+            }
+
+            // Second row of buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { onDisarmClick() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Disarm")
+                }
+
+                Button(
+                    onClick = { onTakeoffClick() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiary
+                    )
+                ) {
+                    Text("Takeoff")
+                }
+            }
         }
     }
 }
@@ -54,6 +112,27 @@ private fun TelemetryRow(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
         Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
     }
+}
+
+// Placeholder functions for button actions
+private fun onChangeModeClick() {
+    // TODO: Implement mode change logic
+    println("Change Mode button clicked")
+}
+
+private fun onArmClick() {
+    // TODO: Implement arm logic
+    println("Arm button clicked")
+}
+
+private fun onDisarmClick() {
+    // TODO: Implement disarm logic
+    println("Disarm button clicked")
+}
+
+private fun onTakeoffClick() {
+    // TODO: Implement takeoff logic
+    println("Takeoff button clicked")
 }
 
 private fun fmt(v: Float, places: Int = 2): String {
