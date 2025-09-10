@@ -207,11 +207,19 @@ object MavlinkTelemetryRepository {
         // HEARTBEAT
         scope.launch {
             mavFrameStream
+
+                .filter { frame -> state.value.fcuDetected && frame.systemId == fcuSystemId }
+                .map { frame -> frame.message }
+                .filterIsInstance<Heartbeat>()
+                .collect { hb ->
+                    val armed = hb.baseMode.any { flag -> flag == MavModeFlag.SAFETY_ARMED }
+
                 .filter { state.value.fcuDetected && it.systemId == fcuSystemId }
                 .map { it.message }
                 .filterIsInstance<Heartbeat>()
                 .collect { hb ->
                     val armed = hb.baseMode.any { it == MavModeFlag.SAFETY_ARMED }
+
 
                     // ArduPilot custom modes
                     val mode = when (hb.customMode) {
@@ -242,7 +250,11 @@ object MavlinkTelemetryRepository {
                         27u -> "Auto_RTL"
                         else -> "Unknown"
                     }
+
+                    _state.update { telemetryState -> telemetryState.copy(armed = armed, mode = mode) }
+
                     _state.update { it.copy(armed = armed, mode = mode) }
+
                 }
         }
 
@@ -250,16 +262,23 @@ object MavlinkTelemetryRepository {
         // SYS_STATUS
         scope.launch {
             mavFrameStream
-                .filter { state.value.fcuDetected && it.systemId == fcuSystemId }
-                .map { it.message }
+                .filter { frame -> state.value.fcuDetected && frame.systemId == fcuSystemId }
+                .map { frame -> frame.message }
                 .filterIsInstance<SysStatus>()
                 .collect { s ->
                     val vBatt = if (s.voltageBattery.toUInt() == 0xFFFFu) null else s.voltageBattery.toFloat() / 1000f
                     val pct = if (s.batteryRemaining.toInt() == -1) null else s.batteryRemaining.toInt()
+
+                    val armable = s.onboardControlSensorsPresent.any { sensor -> sensor == MavSysStatus.SENSOR_3D_GYRO } &&
+                            s.onboardControlSensorsEnabled.any { sensor -> sensor == MavSysStatus.SENSOR_3D_GYRO } &&
+                            s.onboardControlSensorsHealth.any { sensor -> sensor == MavSysStatus.SENSOR_3D_GYRO }
+                    _state.update { telemetryState -> telemetryState.copy(voltage = vBatt, batteryPercent = pct, armable = armable) }
+
                     val armable = s.onboardControlSensorsPresent.any { it == MavSysStatus.SENSOR_3D_GYRO } &&
                             s.onboardControlSensorsEnabled.any { it == MavSysStatus.SENSOR_3D_GYRO } &&
                             s.onboardControlSensorsHealth.any { it == MavSysStatus.SENSOR_3D_GYRO }
                     _state.update { it.copy(voltage = vBatt, batteryPercent = pct, armable = armable) }
+
                 }
         }
 
