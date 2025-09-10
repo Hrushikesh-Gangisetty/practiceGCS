@@ -14,7 +14,11 @@ import kotlin.math.round
 @Composable
 fun TelemetryOverlay(
     state: TelemetryState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onArmClick: () -> Unit,
+    onDisarmClick: () -> Unit,
+    onChangeModeClick: () -> Unit,
+    onTakeoffClick: () -> Unit
 ) {
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)) {
         Column(
@@ -32,6 +36,9 @@ fun TelemetryOverlay(
                 Text(connText, color = connColor)
             }
 
+            TelemetryRow("Mode", state.mode ?: "—")
+            TelemetryRow("Armed", if (state.armed) "Yes" else "No")
+            TelemetryRow("Armable", if (state.armable) "Yes" else "No")
             TelemetryRow("Altitude (MSL)", state.altitudeMsl?.let { "${fmt(it)} m" } ?: "—")
             TelemetryRow("Altitude (Rel)", state.altitudeRelative?.let { "${fmt(it)} m" } ?: "—")
             TelemetryRow("Airspeed", state.airspeed?.let { "${fmt(it)} m/s" } ?: "—")
@@ -42,7 +49,7 @@ fun TelemetryOverlay(
             TelemetryRow("Satellites", state.sats?.toString() ?: "—")
             TelemetryRow("HDOP", state.hdop?.let { fmt(it) } ?: "—")
             TelemetryRow("Latitude", state.latitude?.let { fmt(it.toFloat(), 6) } ?: "—")
-            TelemetryRow("Longitude", state.longitude?.let { fmt(it.toFloat(), 6) } ?: "—" )
+            TelemetryRow("Longitude", state.longitude?.let { fmt(it.toFloat(), 6) } ?: "—")
 
             // Control Buttons
             Spacer(modifier = Modifier.height(12.dp))
@@ -112,27 +119,6 @@ private fun TelemetryRow(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
         Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
     }
-}
-
-// Placeholder functions for button actions
-private fun onChangeModeClick() {
-    // TODO: Implement mode change logic
-    println("Change Mode button clicked")
-}
-
-private fun onArmClick() {
-    // TODO: Implement arm logic
-    println("Arm button clicked")
-}
-
-private fun onDisarmClick() {
-    // TODO: Implement disarm logic
-    println("Disarm button clicked")
-}
-
-private fun onTakeoffClick() {
-    // TODO: Implement takeoff logic
-    println("Takeoff button clicked")
 }
 
 private fun fmt(v: Float, places: Int = 2): String {
