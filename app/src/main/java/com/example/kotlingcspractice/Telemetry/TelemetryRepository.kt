@@ -311,12 +311,145 @@ object MavlinkTelemetryRepository {
         sendCommand(MavCmd.COMPONENT_ARM_DISARM, 0f)
     }
 
+    // Mode change functions
+    suspend fun changeToStabilizeMode(): Boolean {
+        Log.i("MavlinkRepo", "Changing to Stabilize mode")
+        // Param1: MAV_MODE_FLAG_CUSTOM_MODE_ENABLED (1), Param2: Custom mode (0 for Stabilize)
+        sendCommand(MavCmd.DO_SET_MODE, 1f, 0f, 0f, 0f, 0f, 0f, 0f)
+
+        // Wait for mode change confirmation
+        var attempts = 0
+        while (attempts < 10) { // 1 second timeout
+            delay(100)
+            if (state.value.mode == "Stabilize") {
+                Log.i("MavlinkRepo", "Successfully changed to Stabilize mode")
+                return true
+            }
+            attempts++
+        }
+        Log.e("MavlinkRepo", "Failed to change to Stabilize mode")
+        return false
+    }
+
+    suspend fun changeToGuidedMode(): Boolean {
+        Log.i("MavlinkRepo", "Changing to Guided mode")
+        // Param1: MAV_MODE_FLAG_CUSTOM_MODE_ENABLED (1), Param2: Custom mode (4 for Guided)
+        sendCommand(MavCmd.DO_SET_MODE, 1f, 4f, 0f, 0f, 0f, 0f, 0f)
+
+        // Wait for mode change confirmation
+        var attempts = 0
+        while (attempts < 10) { // 1 second timeout
+            delay(100)
+            if (state.value.mode == "Guided") {
+                Log.i("MavlinkRepo", "Successfully changed to Guided mode")
+                return true
+            }
+            attempts++
+        }
+        Log.e("MavlinkRepo", "Failed to change to Guided mode")
+        return false
+    }
+
+    suspend fun changeToAutoMode(): Boolean {
+        Log.i("MavlinkRepo", "Changing to Auto mode")
+        // Param1: MAV_MODE_FLAG_CUSTOM_MODE_ENABLED (1), Param2: Custom mode (3 for Auto)
+        sendCommand(MavCmd.DO_SET_MODE, 1f, 3f, 0f, 0f, 0f, 0f, 0f)
+
+        // Wait for mode change confirmation
+        var attempts = 0
+        while (attempts < 10) { // 1 second timeout
+            delay(100)
+            if (state.value.mode == "Auto") {
+                Log.i("MavlinkRepo", "Successfully changed to Auto mode")
+                return true
+            }
+            attempts++
+        }
+        Log.e("MavlinkRepo", "Failed to change to Auto mode")
+        return false
+    }
+
+    suspend fun changeToLoiterMode(): Boolean {
+        Log.i("MavlinkRepo", "Changing to Loiter mode")
+        // Param1: MAV_MODE_FLAG_CUSTOM_MODE_ENABLED (1), Param2: Custom mode (5 for Loiter)
+        sendCommand(MavCmd.DO_SET_MODE, 1f, 5f, 0f, 0f, 0f, 0f, 0f)
+
+        // Wait for mode change confirmation
+        var attempts = 0
+        while (attempts < 10) { // 1 second timeout
+            delay(100)
+            if (state.value.mode == "Loiter") {
+                Log.i("MavlinkRepo", "Successfully changed to Loiter mode")
+                return true
+            }
+            attempts++
+        }
+        Log.e("MavlinkRepo", "Failed to change to Loiter mode")
+        return false
+    }
+
     suspend fun changeMode(mode: MavMode) {
         sendCommand(MavCmd.DO_SET_MODE, mode.value.toFloat(), 0f)
     }
 
-    suspend fun takeoff(altitude: Float) {
-        sendCommand(MavCmd.NAV_TAKEOFF, -1f, 0f, 0f, 0f, 0f, 0f, altitude)
+    suspend fun takeoff(altitude: Float = 10f) {
+        Log.i("MavlinkRepo", "Starting takeoff sequence")
+
+        // Step 1: Change to Stabilize mode (armable mode)
+        if (!changeToStabilizeMode()) {
+            Log.e("MavlinkRepo", "Takeoff aborted: Failed to change to Stabilize mode")
+            return
+        }
+
+        delay(500) // Small delay after mode change
+
+        // Step 2: Arm the drone
+        if (!state.value.armable) {
+            Log.e("MavlinkRepo", "Takeoff aborted: Vehicle not armable")
+            return
+        }
+
+        Log.i("MavlinkRepo", "Arming drone")
+        sendCommand(MavCmd.COMPONENT_ARM_DISARM, 1f, 0f, 0f, 0f, 0f, 0f, 0f)
+
+        // Wait for arm confirmation
+        var attempts = 0
+        while (attempts < 30) { // 3 seconds timeout
+            delay(100)
+            if (state.value.armed) {
+                Log.i("MavlinkRepo", "Drone armed successfully")
+                break
+            }
+            attempts++
+        }
+
+        if (!state.value.armed) {
+            Log.e("MavlinkRepo", "Takeoff aborted: Failed to arm drone")
+            return
+        }
+
+        delay(1000) // Wait 1 second after arming
+
+        // Step 3: Change to Guided mode (not Auto - Auto requires uploaded mission)
+        if (!changeToGuidedMode()) {
+            Log.e("MavlinkRepo", "Takeoff aborted: Failed to change to Guided mode")
+            // Disarm if mode change failed
+            disarm()
+            return
+        }
+
+        delay(500) // Small delay after mode change
+
+        // Step 4: Send takeoff command (NAV_TAKEOFF = 22u)
+        // Get current position
+        val currentLat = state.value.latitude?.toFloat() ?: 0f
+        val currentLon = state.value.longitude?.toFloat() ?: 0f
+
+        Log.i("MavlinkRepo", "Sending takeoff command - Altitude: ${altitude}m, Lat: $currentLat, Lon: $currentLon")
+        // Param1: Pitch (0 for copters), Param2-3: Empty, Param4: Yaw (NaN for current heading)
+        // Param5: Latitude, Param6: Longitude, Param7: Altitude
+        sendCommand(MavCmd.NAV_TAKEOFF, 0f, 0f, 0f, Float.NaN, currentLat, currentLon, altitude)
+        Log.i("MavlinkRepo", "Takeoff command sent successfully")
     }
 
     suspend fun land() {

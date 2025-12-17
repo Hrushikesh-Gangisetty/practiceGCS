@@ -41,6 +41,30 @@ class TelemetryViewModel : ViewModel() {
         }
     }
 
+    fun changeToStabilize() {
+        viewModelScope.launch {
+            repo.changeToStabilizeMode()
+        }
+    }
+
+    fun changeToGuided() {
+        viewModelScope.launch {
+            repo.changeToGuidedMode()
+        }
+    }
+
+    fun changeToAuto() {
+        viewModelScope.launch {
+            repo.changeToAutoMode()
+        }
+    }
+
+    fun changeToLoiter() {
+        viewModelScope.launch {
+            repo.changeToLoiterMode()
+        }
+    }
+
     fun takeoff() {
         viewModelScope.launch {
             repo.takeoff(10f)
